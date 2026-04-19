@@ -9,6 +9,7 @@ def init_db():
     conn = sqlite3.connect("database.db")
     c = conn.cursor()
 
+    # create tables safely (no delete)
     c.execute('''CREATE TABLE IF NOT EXISTS users (
         email TEXT PRIMARY KEY,
         voted INTEGER DEFAULT 0
@@ -20,6 +21,13 @@ def init_db():
 
     conn.commit()
     conn.close()
+
+
+# 🔥 IMPORTANT: run DB before first request
+@app.before_first_request
+def setup():
+    init_db()
+
 
 # ================= LOGIN =================
 @app.route('/', methods=['GET','POST'])
@@ -37,14 +45,16 @@ def login():
 
         # check vote status
         c.execute("SELECT voted FROM users WHERE email=?", (email,))
-        voted = c.fetchone()[0]
+        result = c.fetchone()
+
+        voted = result[0] if result else 0
 
         conn.close()
 
         if voted == 1:
-            return redirect('/results')   # already voted → view only
+            return redirect('/results')
 
-        return redirect('/vote')          # not voted → can vote
+        return redirect('/vote')
 
     return render_template("login.html")
 
@@ -60,9 +70,11 @@ def vote():
     conn = sqlite3.connect("database.db")
     c = conn.cursor()
 
-    # check again (important)
+    # check vote status
     c.execute("SELECT voted FROM users WHERE email=?", (email,))
-    if c.fetchone()[0] == 1:
+    result = c.fetchone()
+
+    if result and result[0] == 1:
         conn.close()
         return redirect('/results')
 

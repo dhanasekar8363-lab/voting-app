@@ -9,7 +9,6 @@ def init_db():
     conn = sqlite3.connect("database.db")
     c = conn.cursor()
 
-    # create tables safely (no delete)
     c.execute('''CREATE TABLE IF NOT EXISTS users (
         email TEXT PRIMARY KEY,
         voted INTEGER DEFAULT 0
@@ -22,12 +21,8 @@ def init_db():
     conn.commit()
     conn.close()
 
-
-# 🔥 IMPORTANT: run DB before first request
-@app.before_first_request
-def setup():
-    init_db()
-
+# ✅ RUN DB INIT HERE (IMPORTANT)
+init_db()
 
 # ================= LOGIN =================
 @app.route('/', methods=['GET','POST'])
@@ -39,11 +34,9 @@ def login():
         conn = sqlite3.connect("database.db")
         c = conn.cursor()
 
-        # create user if not exists
         c.execute("INSERT OR IGNORE INTO users (email) VALUES (?)", (email,))
         conn.commit()
 
-        # check vote status
         c.execute("SELECT voted FROM users WHERE email=?", (email,))
         result = c.fetchone()
 
@@ -58,7 +51,6 @@ def login():
 
     return render_template("login.html")
 
-
 # ================= VOTE =================
 @app.route('/vote', methods=['GET','POST'])
 def vote():
@@ -70,7 +62,6 @@ def vote():
     conn = sqlite3.connect("database.db")
     c = conn.cursor()
 
-    # check vote status
     c.execute("SELECT voted FROM users WHERE email=?", (email,))
     result = c.fetchone()
 
@@ -92,7 +83,6 @@ def vote():
     conn.close()
     return render_template("vote.html")
 
-
 # ================= RESULTS =================
 @app.route('/results')
 def results():
@@ -108,7 +98,6 @@ def results():
 
     conn.close()
     return render_template("result.html", data=data)
-
 
 # ================= API =================
 @app.route('/api/results')
@@ -126,15 +115,12 @@ def api_results():
     conn.close()
     return jsonify(data)
 
-
 # ================= LOGOUT =================
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect('/')
 
-
 # ================= RUN =================
 if __name__ == "__main__":
-    init_db()
     app.run()

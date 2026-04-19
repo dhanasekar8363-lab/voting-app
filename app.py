@@ -1,8 +1,23 @@
-from flask import Flask, render_template, request, redirect, session, jsonify
+from flask import Flask, render_template, redirect, session, jsonify
 import sqlite3
+import os
+
+from flask_dance.contrib.google import make_google_blueprint, google
 
 app = Flask(__name__)
-app.secret_key = "secret123"
+app.secret_key = os.getenv("SECRET_KEY", "dev_key")
+
+# ================= GOOGLE LOGIN =================
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+
+google_bp = make_google_blueprint(
+    client_id=os.getenv("GOOGLE_CLIENT_ID"),
+    client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
+    scope=["profile", "email"],
+    redirect_url="/google_login"
+)
+
+app.register_blueprint(google_bp, url_prefix="/login")
 
 # ================= DATABASE =================
 def init_db():
@@ -21,39 +36,52 @@ def init_db():
     conn.commit()
     conn.close()
 
-# ✅ RUN DB INIT HERE (IMPORTANT)
 init_db()
 
-# ================= LOGIN =================
-@app.route('/', methods=['GET','POST'])
-def login():
-    if request.method == 'POST':
-        email = request.form['email']
-        session['email'] = email
-
-        conn = sqlite3.connect("database.db")
-        c = conn.cursor()
-
-        c.execute("INSERT OR IGNORE INTO users (email) VALUES (?)", (email,))
-        conn.commit()
-
-        c.execute("SELECT voted FROM users WHERE email=?", (email,))
-        result = c.fetchone()
-
-        voted = result[0] if result else 0
-
-        conn.close()
-
-        if voted == 1:
-            return redirect('/results')
-
-        return redirect('/vote')
-
+# ================= HOME =================
+@app.route('/')
+def home():
     return render_template("login.html")
+
+# ================= GOOGLE CALLBACK =================
+@app.route("/google_login")
+def google_login():
+    if not google.authorized:
+        return redirect("/login/google")
+
+    resp = google.get("/oauth2/v2/userinfo")
+    info = resp.json()
+
+    email = info.get("email")
+
+    # ✅ Only Gmail allowed
+    if not email or not email.endswith("@gmail.com"):
+        return "Only Gmail accounts allowed ❌"
+
+    session["email"] = email
+
+    conn = sqlite3.connect("database.db")
+    c = conn.cursor()
+
+    c.execute("INSERT OR IGNORE INTO users (email) VALUES (?)", (email,))
+    conn.commit()
+
+    c.execute("SELECT voted FROM users WHERE email=?", (email,))
+    result = c.fetchone()
+    voted = result[0] if result else 0
+
+    conn.close()
+
+    if voted == 1:
+        return redirect('/results')
+
+    return redirect('/vote')
 
 # ================= VOTE =================
 @app.route('/vote', methods=['GET','POST'])
 def vote():
+    from flask import request
+
     if 'email' not in session:
         return redirect('/')
 

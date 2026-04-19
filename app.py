@@ -10,7 +10,7 @@ def init_db():
     c = conn.cursor()
 
     c.execute('''CREATE TABLE IF NOT EXISTS users (
-        phone TEXT PRIMARY KEY,
+        email TEXT PRIMARY KEY,
         voted INTEGER DEFAULT 0
     )''')
 
@@ -22,60 +22,64 @@ def init_db():
     conn.close()
 
 # ================= LOGIN =================
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/', methods=['GET','POST'])
 def login():
     if request.method == 'POST':
-        phone = request.form['phone']
-
-        session['phone'] = phone
+        email = request.form['email']
+        session['email'] = email
 
         conn = sqlite3.connect("database.db")
         c = conn.cursor()
 
-        # Create user if not exists
-        c.execute("INSERT OR IGNORE INTO users (phone) VALUES (?)", (phone,))
+        # create user if not exists
+        c.execute("INSERT OR IGNORE INTO users (email) VALUES (?)", (email,))
         conn.commit()
 
-        # Check if already voted
-        c.execute("SELECT voted FROM users WHERE phone=?", (phone,))
+        # check vote status
+        c.execute("SELECT voted FROM users WHERE email=?", (email,))
         voted = c.fetchone()[0]
 
         conn.close()
 
         if voted == 1:
-            return "❌ You already voted!"
+            return redirect('/results')   # already voted → view only
 
-        return redirect('/vote')
+        return redirect('/vote')          # not voted → can vote
 
     return render_template("login.html")
+
 
 # ================= VOTE =================
 @app.route('/vote', methods=['GET','POST'])
 def vote():
-    if 'phone' not in session:
+    if 'email' not in session:
         return redirect('/')
+
+    email = session['email']
+
+    conn = sqlite3.connect("database.db")
+    c = conn.cursor()
+
+    # check again (important)
+    c.execute("SELECT voted FROM users WHERE email=?", (email,))
+    if c.fetchone()[0] == 1:
+        conn.close()
+        return redirect('/results')
 
     if request.method == 'POST':
         party = request.form['party']
-        phone = session['phone']
-
-        conn = sqlite3.connect("database.db")
-        c = conn.cursor()
-
-        # double-check protection
-        c.execute("SELECT voted FROM users WHERE phone=?", (phone,))
-        if c.fetchone()[0] == 1:
-            return "❌ Already voted!"
 
         c.execute("INSERT INTO votes (party) VALUES (?)", (party,))
-        c.execute("UPDATE users SET voted=1 WHERE phone=?", (phone,))
+        c.execute("UPDATE users SET voted=1 WHERE email=?", (email,))
 
         conn.commit()
         conn.close()
 
         return redirect('/results')
 
+    conn.close()
     return render_template("vote.html")
+
 
 # ================= RESULTS =================
 @app.route('/results')
@@ -93,7 +97,8 @@ def results():
     conn.close()
     return render_template("result.html", data=data)
 
-# ================= LIVE API =================
+
+# ================= API =================
 @app.route('/api/results')
 def api_results():
     conn = sqlite3.connect("database.db")
@@ -109,7 +114,15 @@ def api_results():
     conn.close()
     return jsonify(data)
 
+
+# ================= LOGOUT =================
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect('/')
+
+
 # ================= RUN =================
 if __name__ == "__main__":
     init_db()
-    app.run(debug=True)
+    app.run()

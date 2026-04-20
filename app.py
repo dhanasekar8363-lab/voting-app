@@ -53,19 +53,19 @@ def google_login():
         return redirect(url_for("google.login"))
 
     try:
-        resp = google.get("/oauth2/v2/userinfo")
+        # ✅ FIXED API ENDPOINT
+        resp = google.get("https://www.googleapis.com/oauth2/v2/userinfo")
 
-        if not resp or not resp.ok:
-            return "Google API error ❌", 500
+        if not resp.ok:
+            return "Google API failed ❌", 500
 
         info = resp.json()
-
         email = info.get("email")
 
         if not email:
-            return "Email not received ❌", 500
+            return "Email not found ❌", 500
 
-        # Only Gmail allowed
+        # ✅ Gmail restriction
         if not email.endswith("@gmail.com"):
             return "Only Gmail accounts allowed ❌"
 
@@ -74,12 +74,13 @@ def google_login():
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
 
+        # Insert user
         c.execute("INSERT OR IGNORE INTO users (email) VALUES (?)", (email,))
         conn.commit()
 
+        # Check vote status
         c.execute("SELECT voted FROM users WHERE email=?", (email,))
         result = c.fetchone()
-
         conn.close()
 
         if result and result[0] == 1:
@@ -88,7 +89,8 @@ def google_login():
         return redirect('/vote')
 
     except Exception as e:
-        return f"Internal Error: {str(e)}", 500
+        print("ERROR:", e)  # 👈 shows in Render logs
+        return "Internal Server Error ❌", 500
 
 # ================= VOTE =================
 

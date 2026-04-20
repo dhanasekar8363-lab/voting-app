@@ -1,7 +1,6 @@
-from flask import Flask, render_template, redirect, session, jsonify
+from flask import Flask, render_template, redirect, session, jsonify, request
 import sqlite3
 import os
-
 from flask_dance.contrib.google import make_google_blueprint, google
 
 app = Flask(__name__)
@@ -14,14 +13,16 @@ google_bp = make_google_blueprint(
     client_id=os.getenv("GOOGLE_CLIENT_ID"),
     client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
     scope=["profile", "email"],
-    redirect_url="/google_login"
+    redirect_to="google_login"   # ✅ FIXED
 )
 
 app.register_blueprint(google_bp, url_prefix="/login")
 
 # ================= DATABASE =================
+DB_PATH = "/tmp/database.db"   # ✅ FIXED for Render
+
 def init_db():
-    conn = sqlite3.connect("database.db")
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
     c.execute('''CREATE TABLE IF NOT EXISTS users (
@@ -50,17 +51,25 @@ def google_login():
         return redirect("/login/google")
 
     resp = google.get("/oauth2/v2/userinfo")
+
+    # ✅ SAFETY CHECK (fix 500 error)
+    if not resp.ok:
+        return "Google API error", 500
+
     info = resp.json()
 
     email = info.get("email")
 
+    if not email:
+        return "Email not received from Google", 500
+
     # ✅ Only Gmail allowed
-    if not email or not email.endswith("@gmail.com"):
+    if not email.endswith("@gmail.com"):
         return "Only Gmail accounts allowed ❌"
 
     session["email"] = email
 
-    conn = sqlite3.connect("database.db")
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
     c.execute("INSERT OR IGNORE INTO users (email) VALUES (?)", (email,))
@@ -68,11 +77,10 @@ def google_login():
 
     c.execute("SELECT voted FROM users WHERE email=?", (email,))
     result = c.fetchone()
-    voted = result[0] if result else 0
 
     conn.close()
 
-    if voted == 1:
+    if result and result[0] == 1:
         return redirect('/results')
 
     return redirect('/vote')
@@ -80,14 +88,12 @@ def google_login():
 # ================= VOTE =================
 @app.route('/vote', methods=['GET','POST'])
 def vote():
-    from flask import request
-
     if 'email' not in session:
         return redirect('/')
 
     email = session['email']
 
-    conn = sqlite3.connect("database.db")
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
     c.execute("SELECT voted FROM users WHERE email=?", (email,))
@@ -114,7 +120,7 @@ def vote():
 # ================= RESULTS =================
 @app.route('/results')
 def results():
-    conn = sqlite3.connect("database.db")
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
     parties = ["TVK", "DMK", "NTK", "ADMK"]
@@ -130,7 +136,7 @@ def results():
 # ================= API =================
 @app.route('/api/results')
 def api_results():
-    conn = sqlite3.connect("database.db")
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
     parties = ["TVK", "DMK", "NTK", "ADMK"]
@@ -151,4 +157,4 @@ def logout():
 
 # ================= RUN =================
 if __name__ == "__main__":
-    app.run()
+    app.run(debug=True)

@@ -1,25 +1,25 @@
-from flask import Flask, render_template, redirect, session, jsonify, request
+from flask import Flask, render_template, redirect, session, jsonify, request, url_for
 import sqlite3
 import os
 from flask_dance.contrib.google import make_google_blueprint, google
 
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "dev_key")
+app.secret_key = os.getenv("SECRET_KEY", "supersecretkey")
 
 # ================= GOOGLE LOGIN =================
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 google_bp = make_google_blueprint(
     client_id=os.getenv("GOOGLE_CLIENT_ID"),
     client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
     scope=["profile", "email"],
-    redirect_to="google_login"   # ✅ FIXED
+    redirect_to="google_login"
 )
 
 app.register_blueprint(google_bp, url_prefix="/login")
 
 # ================= DATABASE =================
-DB_PATH = "/tmp/database.db"   # ✅ FIXED for Render
+
+DB_PATH = "/tmp/database.db"
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -40,52 +40,58 @@ def init_db():
 init_db()
 
 # ================= HOME =================
+
 @app.route('/')
 def home():
     return render_template("login.html")
 
 # ================= GOOGLE CALLBACK =================
+
 @app.route("/google_login")
 def google_login():
     if not google.authorized:
-        return redirect("/login/google")
+        return redirect(url_for("google.login"))
 
-    resp = google.get("/oauth2/v2/userinfo")
+    try:
+        resp = google.get("/oauth2/v2/userinfo")
 
-    # ✅ SAFETY CHECK (fix 500 error)
-    if not resp.ok:
-        return "Google API error", 500
+        if not resp or not resp.ok:
+            return "Google API error ❌", 500
 
-    info = resp.json()
+        info = resp.json()
 
-    email = info.get("email")
+        email = info.get("email")
 
-    if not email:
-        return "Email not received from Google", 500
+        if not email:
+            return "Email not received ❌", 500
 
-    # ✅ Only Gmail allowed
-    if not email.endswith("@gmail.com"):
-        return "Only Gmail accounts allowed ❌"
+        # Only Gmail allowed
+        if not email.endswith("@gmail.com"):
+            return "Only Gmail accounts allowed ❌"
 
-    session["email"] = email
+        session["email"] = email
 
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
 
-    c.execute("INSERT OR IGNORE INTO users (email) VALUES (?)", (email,))
-    conn.commit()
+        c.execute("INSERT OR IGNORE INTO users (email) VALUES (?)", (email,))
+        conn.commit()
 
-    c.execute("SELECT voted FROM users WHERE email=?", (email,))
-    result = c.fetchone()
+        c.execute("SELECT voted FROM users WHERE email=?", (email,))
+        result = c.fetchone()
 
-    conn.close()
+        conn.close()
 
-    if result and result[0] == 1:
-        return redirect('/results')
+        if result and result[0] == 1:
+            return redirect('/results')
 
-    return redirect('/vote')
+        return redirect('/vote')
+
+    except Exception as e:
+        return f"Internal Error: {str(e)}", 500
 
 # ================= VOTE =================
+
 @app.route('/vote', methods=['GET','POST'])
 def vote():
     if 'email' not in session:
@@ -118,6 +124,7 @@ def vote():
     return render_template("vote.html")
 
 # ================= RESULTS =================
+
 @app.route('/results')
 def results():
     conn = sqlite3.connect(DB_PATH)
@@ -134,6 +141,7 @@ def results():
     return render_template("result.html", data=data)
 
 # ================= API =================
+
 @app.route('/api/results')
 def api_results():
     conn = sqlite3.connect(DB_PATH)
@@ -150,11 +158,13 @@ def api_results():
     return jsonify(data)
 
 # ================= LOGOUT =================
+
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect('/')
 
 # ================= RUN =================
+
 if __name__ == "__main__":
     app.run(debug=True)

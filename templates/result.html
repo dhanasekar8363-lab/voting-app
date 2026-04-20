@@ -33,7 +33,6 @@ h1 {
     margin-bottom: 30px;
 }
 
-/* Glass card */
 .poll {
     margin: 20px 0;
     padding: 15px;
@@ -41,12 +40,6 @@ h1 {
     background: rgba(255,255,255,0.05);
     backdrop-filter: blur(10px);
     box-shadow: 0 0 20px rgba(0,255,150,0.1);
-    transition: 0.3s;
-}
-
-.poll:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 0 30px rgba(0,255,150,0.3);
 }
 
 .label {
@@ -56,7 +49,6 @@ h1 {
     font-weight: 500;
 }
 
-/* Bar container */
 .bar-container {
     width: 100%;
     height: 35px;
@@ -65,7 +57,6 @@ h1 {
     overflow: hidden;
 }
 
-/* Animated bar */
 .bar {
     height: 100%;
     width: 0%;
@@ -77,30 +68,18 @@ h1 {
     padding-right: 10px;
     font-weight: bold;
     transition: width 0.8s ease-in-out;
-    position: relative;
-}
-
-/* shimmer effect */
-.bar::after {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 50%;
-    height: 100%;
-    background: rgba(255,255,255,0.2);
-    transform: skewX(-20deg);
-    animation: shimmer 2s infinite;
-}
-
-@keyframes shimmer {
-    100% { left: 150%; }
 }
 
 .footer {
     text-align: center;
     margin-top: 20px;
     opacity: 0.7;
+}
+
+.loading {
+    text-align: center;
+    margin-top: 40px;
+    opacity: 0.6;
 }
 </style>
 
@@ -110,22 +89,28 @@ h1 {
 
 <div class="container">
     <h1>🔥 Live Voting Poll</h1>
-    <div id="polls"></div>
+    <div id="polls" class="loading">Loading results...</div>
     <div class="footer">Auto updating every 2 seconds ⚡</div>
 </div>
 
 <script>
 function renderPoll(data) {
+    let container = document.getElementById("polls");
+
+    if (!data || Object.keys(data).length === 0) {
+        container.innerHTML = "<p>No votes yet 😴</p>";
+        return;
+    }
+
     let maxVotes = Math.max(...Object.values(data), 1);
 
-    let container = document.getElementById("polls");
-    container.innerHTML = "";
+    let html = "";
 
     for (let party in data) {
         let count = data[party];
         let width = (count / maxVotes) * 100;
 
-        container.innerHTML += `
+        html += `
             <div class="poll">
                 <div class="label">
                     <span>${party}</span>
@@ -137,15 +122,23 @@ function renderPoll(data) {
             </div>
         `;
     }
+
+    container.innerHTML = html;
 }
 
 function loadData() {
     fetch('/api/results')
-    .then(res => res.json())
+    .then(res => {
+        if (!res.ok) throw new Error("API failed");
+        return res.json();
+    })
     .then(data => {
         renderPoll(data);
     })
-    .catch(err => console.error(err));
+    .catch(err => {
+        document.getElementById("polls").innerHTML = "⚠️ Failed to load data";
+        console.error(err);
+    });
 }
 
 setInterval(loadData, 2000);

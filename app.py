@@ -3,6 +3,9 @@ import sqlite3
 import os
 from flask_dance.contrib.google import make_google_blueprint, google
 
+# 🔥 FIX FOR SCOPE ERROR
+os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
+
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "supersecretkey")
 
@@ -53,7 +56,6 @@ def google_login():
         return redirect(url_for("google.login"))
 
     try:
-        # ✅ FIXED API ENDPOINT
         resp = google.get("https://www.googleapis.com/oauth2/v2/userinfo")
 
         if not resp.ok:
@@ -65,7 +67,6 @@ def google_login():
         if not email:
             return "Email not found ❌", 500
 
-        # ✅ Gmail restriction
         if not email.endswith("@gmail.com"):
             return "Only Gmail accounts allowed ❌"
 
@@ -74,11 +75,9 @@ def google_login():
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
 
-        # Insert user
         c.execute("INSERT OR IGNORE INTO users (email) VALUES (?)", (email,))
         conn.commit()
 
-        # Check vote status
         c.execute("SELECT voted FROM users WHERE email=?", (email,))
         result = c.fetchone()
         conn.close()
@@ -89,7 +88,7 @@ def google_login():
         return redirect('/vote')
 
     except Exception as e:
-        print("ERROR:", e)  # 👈 shows in Render logs
+        print("ERROR:", e)
         return "Internal Server Error ❌", 500
 
 # ================= VOTE =================
@@ -141,23 +140,6 @@ def results():
 
     conn.close()
     return render_template("result.html", data=data)
-
-# ================= API =================
-
-@app.route('/api/results')
-def api_results():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-
-    parties = ["TVK", "DMK", "NTK", "ADMK"]
-    data = {}
-
-    for p in parties:
-        c.execute("SELECT COUNT(*) FROM votes WHERE party=?", (p,))
-        data[p] = c.fetchone()[0]
-
-    conn.close()
-    return jsonify(data)
 
 # ================= LOGOUT =================
 

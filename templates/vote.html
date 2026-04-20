@@ -33,24 +33,27 @@ body {
     align-items: center;
 }
 
-/* CARD STACK */
-.card-stack {
+/* ===== CAROUSEL ===== */
+.carousel {
     position: relative;
-    width: 90%;
-    max-width: 350px;
-    height: 450px;
+    width: 100%;
+    max-width: 900px;
+    height: 480px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
 }
 
-/* CARD */
+/* CARD BASE */
 .card {
     position: absolute;
-    width: 100%;
-    height: 100%;
+    width: 260px;
+    height: 420px;
     border-radius: 20px;
     overflow: hidden;
-    background: #000;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-    transition: transform 0.4s ease, opacity 0.4s ease;
+    transition: all 0.4s ease;
+    cursor: pointer;
 }
 
 /* IMAGE */
@@ -60,33 +63,49 @@ body {
     object-fit: cover;
 }
 
-/* NAME OVERLAY */
+/* NAME */
 .card-name {
     position: absolute;
     bottom: 0;
     width: 100%;
-    padding: 15px;
+    padding: 12px;
     background: linear-gradient(transparent, rgba(0,0,0,0.9));
-    font-size: 20px;
     font-weight: bold;
 }
 
-/* SWIPE ANIMATION */
-.swipe-left {
-    transform: translateX(-120%) rotate(-20deg);
-    opacity: 0;
+/* POSITIONS */
+.center {
+    transform: scale(1.1);
+    z-index: 3;
 }
 
-.swipe-right {
-    transform: translateX(120%) rotate(20deg);
-    opacity: 0;
+.left {
+    transform: translateX(-220px) scale(0.9);
+    opacity: 0.5;
+    z-index: 2;
 }
+
+.right {
+    transform: translateX(220px) scale(0.9);
+    opacity: 0.5;
+    z-index: 2;
+}
+
+.hidden {
+    opacity: 0;
+    z-index: 1;
+}
+
+/* ===== GLOW COLORS ===== */
+.tvk { box-shadow: 0 0 20px yellow; }
+.dmk { box-shadow: 0 0 20px red, 0 0 30px black; }
+.ntk { box-shadow: 0 0 25px red; }
+.admk { box-shadow: 0 0 25px #22c55e; }
 
 /* BUTTON */
 button {
     margin-top: 20px;
-    width: 90%;
-    max-width: 350px;
+    width: 250px;
     padding: 12px;
     border: none;
     border-radius: 12px;
@@ -103,37 +122,33 @@ button {
 
 <div class="container">
 
-    <h2>🗳️ Swipe & Vote</h2>
+    <h2>📦 swipe & vote</h2>
 
-    <div class="card-stack" id="cardStack">
+    <div class="carousel" id="carousel">
 
-        <!-- TVK -->
-        <div class="card" data-party="TVK">
+        <div class="card tvk" data-party="TVK">
             <img src="/static/tvk.jpg">
             <div class="card-name">TVK</div>
         </div>
 
-        <!-- DMK -->
-        <div class="card" data-party="DMK">
+        <div class="card dmk" data-party="DMK">
             <img src="/static/dmk.jpg">
             <div class="card-name">DMK</div>
         </div>
 
-        <!-- NTK -->
-        <div class="card" data-party="NTK">
+        <div class="card ntk" data-party="NTK">
             <img src="/static/ntk.jpg">
             <div class="card-name">NTK</div>
         </div>
 
-        <!-- ADMK -->
-        <div class="card" data-party="ADMK">
+        <div class="card admk" data-party="ADMK">
             <img src="/static/admk.jpg">
             <div class="card-name">ADMK</div>
         </div>
 
     </div>
 
-    <form method="post" id="voteForm">
+    <form method="post">
         <input type="hidden" name="party" id="selectedParty">
         <button type="submit">Submit Vote 🚀</button>
     </form>
@@ -143,57 +158,86 @@ button {
 <script>
 
 let cards = document.querySelectorAll(".card");
-let current = 0;
+let index = 0;
 let selected = null;
 
-function handleSwipe(card) {
+function updateCarousel() {
+    cards.forEach((card, i) => {
+        card.classList.remove("center", "left", "right", "hidden");
 
-    let startX = 0;
-
-    card.addEventListener("touchstart", e => {
-        startX = e.touches[0].clientX;
+        if (i === index) card.classList.add("center");
+        else if (i === index - 1) card.classList.add("left");
+        else if (i === index + 1) card.classList.add("right");
+        else card.classList.add("hidden");
     });
+}
 
-    card.addEventListener("touchend", e => {
-        let endX = e.changedTouches[0].clientX;
-        let diff = endX - startX;
+updateCarousel();
 
-        if (diff > 80) {
-            swipe(card, "right");
-        } else if (diff < -80) {
-            swipe(card, "left");
-        }
-    });
+/* ===== CLICK SELECT ===== */
+cards.forEach((card, i) => {
 
-    // click also select
     card.addEventListener("click", () => {
+        index = i;
+        updateCarousel();
         selectParty(card);
     });
+
+    /* HOVER (LAPTOP MAGIC 🔥) */
+    card.addEventListener("mouseenter", () => {
+        index = i;
+        updateCarousel();
+    });
+});
+
+/* ===== SWIPE ===== */
+let startX = 0;
+
+document.addEventListener("touchstart", e => {
+    startX = e.touches[0].clientX;
+});
+
+document.addEventListener("touchend", e => {
+    let diff = e.changedTouches[0].clientX - startX;
+
+    if (diff > 80) prev();
+    else if (diff < -80) next();
+});
+
+/* ===== MOUSE DRAG ===== */
+let dragging = false;
+
+document.addEventListener("mousedown", e => {
+    dragging = true;
+    startX = e.clientX;
+});
+
+document.addEventListener("mouseup", e => {
+    if (!dragging) return;
+    dragging = false;
+
+    let diff = e.clientX - startX;
+
+    if (diff > 80) prev();
+    else if (diff < -80) next();
+});
+
+/* ===== NAVIGATION ===== */
+function next() {
+    if (index < cards.length - 1) index++;
+    updateCarousel();
 }
 
-function swipe(card, direction) {
-
-    if (direction === "right") {
-        selectParty(card);
-    }
-
-    card.classList.add(direction === "right" ? "swipe-right" : "swipe-left");
-
-    setTimeout(() => {
-        card.style.display = "none";
-        current++;
-    }, 300);
+function prev() {
+    if (index > 0) index--;
+    updateCarousel();
 }
 
+/* ===== SELECT ===== */
 function selectParty(card) {
     selected = card.getAttribute("data-party");
     document.getElementById("selectedParty").value = selected;
-
-    // highlight effect
-    card.style.boxShadow = "0 0 30px #22c55e";
 }
-
-cards.forEach(handleSwipe);
 
 </script>
 

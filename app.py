@@ -1,5 +1,5 @@
 from flask import Flask, render_template, redirect, session, jsonify, request, url_for
-import sqlite3
+from supabase import create_client
 import os
 from flask_dance.contrib.google import make_google_blueprint, google
 
@@ -7,9 +7,19 @@ from flask_dance.contrib.google import make_google_blueprint, google
 os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
 
 app = Flask(__name__)
-
-# 🔐 Use strong secret key (set in Render ENV)
 app.secret_key = os.getenv("SECRET_KEY", "change-this-in-production")
+
+# ================= SUPABASE =================
+
+# 👉 🔴 PASTE YOUR VALUES HERE
+SUPABASE_URL = "https://mqjcgerkrspofowvqced.supabase.co"
+SUPABASE_KEY = "sb_publishable_p5Zeatd1YcCUlTcR_eIT7A_qf75b8Mx"
+
+# Example:
+# SUPABASE_URL = "https://abcd1234.supabase.co"
+# SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ================= GOOGLE LOGIN =================
 
@@ -21,31 +31,6 @@ google_bp = make_google_blueprint(
 )
 
 app.register_blueprint(google_bp, url_prefix="/login")
-
-# ================= DATABASE =================
-
-DB_PATH = os.path.join(os.getcwd(), "database.db")
-
-def get_db():
-    return sqlite3.connect(DB_PATH, check_same_thread=False)
-
-def init_db():
-    conn = get_db()
-    c = conn.cursor()
-
-    c.execute('''CREATE TABLE IF NOT EXISTS users (
-        email TEXT PRIMARY KEY,
-        voted INTEGER DEFAULT 0
-    )''')
-
-    c.execute('''CREATE TABLE IF NOT EXISTS votes (
-        party TEXT
-    )''')
-
-    conn.commit()
-    conn.close()
-
-init_db()
 
 # ================= HOME =================
 
@@ -60,41 +45,31 @@ def google_login():
     if not google.authorized:
         return redirect(url_for("google.login"))
 
-    try:
-        resp = google.get("https://www.googleapis.com/oauth2/v2/userinfo")
+    resp = google.get("https://www.googleapis.com/oauth2/v2/userinfo")
 
-        if not resp.ok:
-            return "Google API failed ❌", 500
+    if not resp.ok:
+        return "Google API failed ❌", 500
 
-        info = resp.json()
-        email = info.get("email")
+    info = resp.json()
+    email = info.get("email")
 
-        if not email:
-            return "Email not found ❌", 500
+    if not email.endswith("@gmail.com"):
+        return "Only Gmail allowed ❌"
 
-        if not email.endswith("@gmail.com"):
-            return "Only Gmail allowed ❌"
+    session["email"] = email
 
-        session["email"] = email
+    # 👉 CREATE USER (IF NOT EXISTS)
+    supabase.table("users").upsert({
+        "email": email,
+        "voted": False
+    }).execute()
 
-        conn = get_db()
-        c = conn.cursor()
+    user = supabase.table("users").select("*").eq("email", email).execute()
 
-        c.execute("INSERT OR IGNORE INTO users (email) VALUES (?)", (email,))
-        conn.commit()
+    if user.data and user.data[0]["voted"]:
+        return redirect('/results')
 
-        c.execute("SELECT voted FROM users WHERE email=?", (email,))
-        result = c.fetchone()
-        conn.close()
-
-        if result and result[0] == 1:
-            return redirect('/results')
-
-        return redirect('/vote')
-
-    except Exception as e:
-        print("ERROR:", e)
-        return "Internal Server Error ❌", 500
+    return redirect('/vote')
 
 # ================= VOTE =================
 
@@ -105,35 +80,30 @@ def vote():
 
     email = session['email']
 
-    conn = get_db()
-    c = conn.cursor()
+    user = supabase.table("users").select("*").eq("email", email).execute()
 
-    c.execute("SELECT voted FROM users WHERE email=?", (email,))
-    result = c.fetchone()
-
-    if result and result[0] == 1:
-        conn.close()
+    if user.data and user.data[0]["voted"]:
         return redirect('/results')
 
     if request.method == 'POST':
         party = request.form.get('party')
 
         if not party:
-            conn.close()
-            return "Invalid vote ❌", 400
+            return "Invalid vote ❌"
 
-        c.execute("INSERT INTO votes (party) VALUES (?)", (party,))
-        c.execute("UPDATE users SET voted=1 WHERE email=?", (email,))
+        # 👉 INSERT VOTE
+        supabase.table("votes").insert({"party": party}).execute()
 
-        conn.commit()
-        conn.close()
+        # 👉 UPDATE USER
+        supabase.table("users").update({
+            "voted": True
+        }).eq("email", email).execute()
 
         return redirect('/results')
 
-    conn.close()
     return render_template("vote.html")
 
-# ================= RESULTS PAGE =================
+# ================= RESULTS =================
 
 @app.route('/results')
 def results():
@@ -143,23 +113,14 @@ def results():
 
 @app.route('/api/results')
 def api_results():
-    try:
-        conn = get_db()
-        c = conn.cursor()
+    parties = ["TVK", "DMK", "NTK", "ADMK"]
+    data = {}
 
-        parties = ["TVK", "DMK", "NTK", "ADMK"]
-        data = {}
+    for p in parties:
+        res = supabase.table("votes").select("*").eq("party", p).execute()
+        data[p] = len(res.data)
 
-        for p in parties:
-            c.execute("SELECT COUNT(*) FROM votes WHERE party=?", (p,))
-            data[p] = c.fetchone()[0]
-
-        conn.close()
-        return jsonify(data)
-
-    except Exception as e:
-        print("API ERROR:", e)
-        return jsonify({"error": "server error"}), 500
+    return jsonify(data)
 
 # ================= LOGOUT =================
 

@@ -15,3 +15,6 @@ idna==3.11
 certifi==2026.2.25
 charset-normalizer==3.4.7
 URLObject==3.0.0
+
+# 🔥 ADD THIS (VERY IMPORTANT)
+supabase==2.4.0

@@ -3,9 +3,12 @@
 <head>
 <title>Vote</title>
 
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;500;700&display=swap" rel="stylesheet">
 
 <style>
+
 body {
     margin: 0;
     font-family: 'Poppins', sans-serif;
@@ -13,6 +16,7 @@ body {
     background-size: 400% 400%;
     animation: gradientBG 10s ease infinite;
     color: white;
+    overflow: hidden;
 }
 
 @keyframes gradientBG {
@@ -22,57 +26,67 @@ body {
 }
 
 .container {
-    max-width: 500px;
-    margin: auto;
-    padding: 30px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
 }
 
-h2 {
-    text-align: center;
-    margin-bottom: 30px;
+/* CARD STACK */
+.card-stack {
+    position: relative;
+    width: 90%;
+    max-width: 350px;
+    height: 450px;
 }
 
-/* Glass card */
+/* CARD */
 .card {
-    background: rgba(255,255,255,0.05);
-    backdrop-filter: blur(12px);
+    position: absolute;
+    width: 100%;
+    height: 100%;
     border-radius: 20px;
-    padding: 20px;
-    box-shadow: 0 0 20px rgba(0,255,150,0.1);
+    overflow: hidden;
+    background: #000;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    transition: transform 0.4s ease, opacity 0.4s ease;
 }
 
-/* Option buttons */
-.option {
-    margin: 12px 0;
+/* IMAGE */
+.card img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* NAME OVERLAY */
+.card-name {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
     padding: 15px;
-    border-radius: 12px;
-    background: #020617;
-    cursor: pointer;
-    transition: 0.3s;
-    border: 2px solid transparent;
-}
-
-.option:hover {
-    transform: scale(1.03);
-    border-color: #22c55e;
-}
-
-/* Selected effect */
-input[type="radio"] {
-    display: none;
-}
-
-input[type="radio"]:checked + .option {
-    background: linear-gradient(90deg, #22c55e, #4ade80);
-    color: black;
+    background: linear-gradient(transparent, rgba(0,0,0,0.9));
+    font-size: 20px;
     font-weight: bold;
-    box-shadow: 0 0 15px #22c55e;
 }
 
-/* Submit button */
+/* SWIPE ANIMATION */
+.swipe-left {
+    transform: translateX(-120%) rotate(-20deg);
+    opacity: 0;
+}
+
+.swipe-right {
+    transform: translateX(120%) rotate(20deg);
+    opacity: 0;
+}
+
+/* BUTTON */
 button {
     margin-top: 20px;
-    width: 100%;
+    width: 90%;
+    max-width: 350px;
     padding: 12px;
     border: none;
     border-radius: 12px;
@@ -80,50 +94,108 @@ button {
     font-size: 16px;
     font-weight: bold;
     cursor: pointer;
-    transition: 0.3s;
 }
 
-button:hover {
-    transform: scale(1.05);
-    box-shadow: 0 0 20px #22c55e;
-}
 </style>
-
 </head>
 
 <body>
 
 <div class="container">
-    <h2>🗳️ Vote Your Party</h2>
 
-    <div class="card">
-        <form method="post">
+    <h2>🗳️ Swipe & Vote</h2>
 
-            <label>
-                <input type="radio" name="party" value="TVK" required>
-                <div class="option">TVK</div>
-            </label>
+    <div class="card-stack" id="cardStack">
 
-            <label>
-                <input type="radio" name="party" value="DMK">
-                <div class="option">DMK</div>
-            </label>
+        <!-- TVK -->
+        <div class="card" data-party="TVK">
+            <img src="/static/tvk.jpg">
+            <div class="card-name">TVK</div>
+        </div>
 
-            <label>
-                <input type="radio" name="party" value="NTK">
-                <div class="option">NTK</div>
-            </label>
+        <!-- DMK -->
+        <div class="card" data-party="DMK">
+            <img src="/static/dmk.jpg">
+            <div class="card-name">DMK</div>
+        </div>
 
-            <label>
-                <input type="radio" name="party" value="ADMK">
-                <div class="option">ADMK</div>
-            </label>
+        <!-- NTK -->
+        <div class="card" data-party="NTK">
+            <img src="/static/ntk.jpg">
+            <div class="card-name">NTK</div>
+        </div>
 
-            <button type="submit">Submit Vote 🚀</button>
+        <!-- ADMK -->
+        <div class="card" data-party="ADMK">
+            <img src="/static/admk.jpg">
+            <div class="card-name">ADMK</div>
+        </div>
 
-        </form>
     </div>
+
+    <form method="post" id="voteForm">
+        <input type="hidden" name="party" id="selectedParty">
+        <button type="submit">Submit Vote 🚀</button>
+    </form>
+
 </div>
+
+<script>
+
+let cards = document.querySelectorAll(".card");
+let current = 0;
+let selected = null;
+
+function handleSwipe(card) {
+
+    let startX = 0;
+
+    card.addEventListener("touchstart", e => {
+        startX = e.touches[0].clientX;
+    });
+
+    card.addEventListener("touchend", e => {
+        let endX = e.changedTouches[0].clientX;
+        let diff = endX - startX;
+
+        if (diff > 80) {
+            swipe(card, "right");
+        } else if (diff < -80) {
+            swipe(card, "left");
+        }
+    });
+
+    // click also select
+    card.addEventListener("click", () => {
+        selectParty(card);
+    });
+}
+
+function swipe(card, direction) {
+
+    if (direction === "right") {
+        selectParty(card);
+    }
+
+    card.classList.add(direction === "right" ? "swipe-right" : "swipe-left");
+
+    setTimeout(() => {
+        card.style.display = "none";
+        current++;
+    }, 300);
+}
+
+function selectParty(card) {
+    selected = card.getAttribute("data-party");
+    document.getElementById("selectedParty").value = selected;
+
+    // highlight effect
+    card.style.boxShadow = "0 0 30px #22c55e";
+}
+
+cards.forEach(handleSwipe);
+
+</script>
 
 </body>
 </html>

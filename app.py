@@ -3,7 +3,7 @@ import sqlite3
 import os
 from flask_dance.contrib.google import make_google_blueprint, google
 
-# 🔥 FIX FOR SCOPE ERROR
+# 🔥 FIX FOR GOOGLE SCOPE ERROR
 os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
 
 app = Flask(__name__)
@@ -14,7 +14,7 @@ app.secret_key = os.getenv("SECRET_KEY", "supersecretkey")
 google_bp = make_google_blueprint(
     client_id=os.getenv("GOOGLE_CLIENT_ID"),
     client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
-    scope=["profile", "email"],
+    scope=["openid", "email", "profile"],  # ✅ FIXED SCOPE
     redirect_to="google_login"
 )
 
@@ -68,7 +68,7 @@ def google_login():
             return "Email not found ❌", 500
 
         if not email.endswith("@gmail.com"):
-            return "Only Gmail accounts allowed ❌"
+            return "Only Gmail allowed ❌"
 
         session["email"] = email
 
@@ -124,22 +124,33 @@ def vote():
     conn.close()
     return render_template("vote.html")
 
-# ================= RESULTS =================
+# ================= RESULTS PAGE =================
 
 @app.route('/results')
 def results():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
+    return render_template("result.html")
 
-    parties = ["TVK", "DMK", "NTK", "ADMK"]
-    data = {}
+# ================= 🔥 API (THIS WAS MISSING) =================
 
-    for p in parties:
-        c.execute("SELECT COUNT(*) FROM votes WHERE party=?", (p,))
-        data[p] = c.fetchone()[0]
+@app.route('/api/results')
+def api_results():
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
 
-    conn.close()
-    return render_template("result.html", data=data)
+        parties = ["TVK", "DMK", "NTK", "ADMK"]
+        data = {}
+
+        for p in parties:
+            c.execute("SELECT COUNT(*) FROM votes WHERE party=?", (p,))
+            data[p] = c.fetchone()[0]
+
+        conn.close()
+        return jsonify(data)
+
+    except Exception as e:
+        print("API ERROR:", e)
+        return jsonify({"error": "server error"}), 500
 
 # ================= LOGOUT =================
 

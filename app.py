@@ -3,18 +3,20 @@ import sqlite3
 import os
 from flask_dance.contrib.google import make_google_blueprint, google
 
-# 🔥 FIX FOR GOOGLE SCOPE ERROR
+# 🔐 Fix Google OAuth scope issue
 os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
 
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "supersecretkey")
+
+# 🔐 Use strong secret key (set in Render ENV)
+app.secret_key = os.getenv("SECRET_KEY", "change-this-in-production")
 
 # ================= GOOGLE LOGIN =================
 
 google_bp = make_google_blueprint(
     client_id=os.getenv("GOOGLE_CLIENT_ID"),
     client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
-    scope=["openid", "email", "profile"],  # ✅ FIXED SCOPE
+    scope=["openid", "email", "profile"],
     redirect_to="google_login"
 )
 
@@ -22,10 +24,13 @@ app.register_blueprint(google_bp, url_prefix="/login")
 
 # ================= DATABASE =================
 
-DB_PATH = "/tmp/database.db"
+DB_PATH = os.path.join(os.getcwd(), "database.db")
+
+def get_db():
+    return sqlite3.connect(DB_PATH, check_same_thread=False)
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db()
     c = conn.cursor()
 
     c.execute('''CREATE TABLE IF NOT EXISTS users (
@@ -72,7 +77,7 @@ def google_login():
 
         session["email"] = email
 
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db()
         c = conn.cursor()
 
         c.execute("INSERT OR IGNORE INTO users (email) VALUES (?)", (email,))
@@ -93,14 +98,14 @@ def google_login():
 
 # ================= VOTE =================
 
-@app.route('/vote', methods=['GET','POST'])
+@app.route('/vote', methods=['GET', 'POST'])
 def vote():
     if 'email' not in session:
         return redirect('/')
 
     email = session['email']
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db()
     c = conn.cursor()
 
     c.execute("SELECT voted FROM users WHERE email=?", (email,))
@@ -111,7 +116,11 @@ def vote():
         return redirect('/results')
 
     if request.method == 'POST':
-        party = request.form['party']
+        party = request.form.get('party')
+
+        if not party:
+            conn.close()
+            return "Invalid vote ❌", 400
 
         c.execute("INSERT INTO votes (party) VALUES (?)", (party,))
         c.execute("UPDATE users SET voted=1 WHERE email=?", (email,))
@@ -130,12 +139,12 @@ def vote():
 def results():
     return render_template("result.html")
 
-# ================= 🔥 API (THIS WAS MISSING) =================
+# ================= API =================
 
 @app.route('/api/results')
 def api_results():
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db()
         c = conn.cursor()
 
         parties = ["TVK", "DMK", "NTK", "ADMK"]
@@ -162,4 +171,4 @@ def logout():
 # ================= RUN =================
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run()

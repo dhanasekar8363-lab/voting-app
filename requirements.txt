@@ -17,4 +17,5 @@ charset-normalizer==3.4.7
 URLObject==3.0.0
 
 # 🔥 ADD THIS (VERY IMPORTANT)
-supabase==2.4.0
+supabase==2.3.4
+postgrest-py
